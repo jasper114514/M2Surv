@@ -7,8 +7,9 @@ import torch.nn as nn
 import torch.nn.init as init
 from custom_optims.radam import RAdam
 # from models.model_motcat import MCATPathwaysMotCat
-from models.model_HGNN import M2Surv
-from models.memory import MemoryBank
+from models.model_M2Surv import M2Surv
+from models.model_M3Surv import M3Surv
+from models.memory import MemoryBank, ProtoBank
 from sksurv.metrics import concordance_index_censored, concordance_index_ipcw, brier_score, integrated_brier_score, cumulative_dynamic_auc
 from scipy.ndimage import convolve
 from sksurv.util import Surv
@@ -113,113 +114,19 @@ def _init_optim(args, model):
 def _init_model(args):
     
     print('\nInit Model...', end=' ')
-    if args.type_of_path == "xena":
-        omics_input_dim = 1577
-    elif args.type_of_path == "hallmarks":
-        omics_input_dim = 4241
-    elif args.type_of_path == "combine":
-        omics_input_dim = 4999
-    elif args.type_of_path == "multi":
-        if args.study == "tcga_brca":
-            omics_input_dim = 9947
-        else:
-            omics_input_dim = 14933
-    else:
-        omics_input_dim = 0
-    
-    # omics baselines
-    if args.modality == "mlp_per_path":
-
-        model_dict = {
-            "device" : args.device, "df_comp" : args.composition_df, "input_dim" : omics_input_dim,
-            "dim_per_path_1" : args.encoding_layer_1_dim, "dim_per_path_2" : args.encoding_layer_2_dim,
-            "dropout" : args.encoder_dropout, "num_classes" : args.n_classes,
-        }
-        model = MaskedOmics(**model_dict)
-
-    elif args.modality == "omics":
-
-        model_dict = {
-             "input_dim" : omics_input_dim, "projection_dim": 64, "dropout": args.encoder_dropout
-        }
-        model = MLPOmics(**model_dict)
-
-    elif args.modality == "snn":
-
-        model_dict = {
-             "omic_input_dim" : omics_input_dim, 
-        }
-        model = SNNOmics(**model_dict)
-
-    elif args.modality in ["abmil_wsi", "abmil_wsi_pathways"]:
-
-        model_dict = {
-            "device" : args.device, "df_comp" : args.composition_df, "omic_input_dim" : omics_input_dim,
-            "dim_per_path_1" : args.encoding_layer_1_dim, "dim_per_path_2" : args.encoding_layer_2_dim,
-            "fusion":args.fusion
-        }
-
-        model = ABMIL(**model_dict)
-
-    # unimodal and multimodal baselines
-    elif args.modality in ["deepmisl_wsi", "deepmisl_wsi_pathways"]:
-
-        model_dict = {
-            "device" : args.device, "df_comp" : args.composition_df, "omic_input_dim" : omics_input_dim,
-            "dim_per_path_1" : args.encoding_layer_1_dim, "dim_per_path_2" : args.encoding_layer_2_dim,
-            "fusion":args.fusion
-        }
-
-        model = DeepMISL(**model_dict)
-
-    elif args.modality == "mlp_wsi":
-        
-        model_dict = {
-            "wsi_embedding_dim":args.encoding_dim, "input_dim_omics":omics_input_dim, "dropout":args.encoder_dropout,
-            "device": args.device
-
-        }
-        model = MLPWSI(**model_dict)
-
-    elif args.modality in ["transmil_wsi", "transmil_wsi_pathways"]:
-
-        model_dict = {
-            "device" : args.device, "df_comp" : args.composition_df, "omic_input_dim" : omics_input_dim,
-            "dim_per_path_1" : args.encoding_layer_1_dim, "dim_per_path_2" : args.encoding_layer_2_dim,
-            "fusion":args.fusion
-        }
-
-        model = TMIL(**model_dict)
-
-    elif args.modality == "coattn":
-
-        model_dict = {'fusion': args.fusion, 'omic_sizes': args.omic_sizes, 'n_classes': args.n_classes}
-        model = MCATPathways(**model_dict)
-
-    elif args.modality == "coattn_motcat":
-
-        model_dict = {
-            'fusion': args.fusion, 'omic_sizes': args.omic_sizes, 'n_classes': args.n_classes,
-            "ot_reg":0.1, "ot_tau":0.5, "ot_impl":"pot-uot-l2"
-        }
-        model = MCATPathwaysMotCat(**model_dict)
-
-    elif args.modality == "hgnn":
+    if args.modality == "m2surv":
 
         model_dict = {
             'fusion': args.fusion, 'genomic_sizes': args.omic_sizes, 'n_classes': args.n_classes, "model_size": "small",
         }
         model = M2Surv(**model_dict)
+    
+    elif args.modality == "m3surv":
 
-    # survpath 
-    elif args.modality == "survpath":
-
-        model_dict = {'omic_sizes': args.omic_sizes, 'num_classes': args.n_classes}
-
-        if args.use_nystrom:
-            model = SurvPath_with_nystrom(**model_dict)
-        else:
-            model = SurvPath(**model_dict)
+        model_dict = {
+            'fusion': args.fusion, 'genomic_sizes': args.genomic_sizes, 'transomic_sizes': args.transomic_sizes, 'n_classes': args.n_classes, "model_size": "small",
+        }
+        model = M3Surv(**model_dict)
 
     else:
         raise NotImplementedError
@@ -309,25 +216,7 @@ def _unpack_data(modality, device, data):
         - mask : torch.Tensor
     
     """
-    
-    if modality in ["mlp_per_path", "omics", "snn"]:
-        data_WSI = data[0]
-        mask = None
-        data_omics = data[1].to(device)
-        y_disc, event_time, censor, clinical_data_list = data[2], data[3], data[4], data[5]
-    
-    elif modality in ["mlp_per_path_wsi", "abmil_wsi", "abmil_wsi_pathways", "deepmisl_wsi", "deepmisl_wsi_pathways", "mlp_wsi", "transmil_wsi", "transmil_wsi_pathways"]:
-        data_WSI = data[0].to(device)
-        data_omics = data[1].to(device)
-        
-        if data[6][0,0] == 1:
-            mask = None
-        else:
-            mask = data[6].to(device)
-
-        y_disc, event_time, censor, clinical_data_list = data[2], data[3], data[4], data[5]
-
-    elif modality in ["coattn", "coattn_motcat", "hgnn"]:
+    if modality in ["m2surv"]:
         
         data_ff = data[0].to(device)
         data_ffpe = data[1].to(device)
@@ -343,28 +232,28 @@ def _unpack_data(modality, device, data):
 
         y_disc, event_time, censor, clinical_data_list = data[9], data[10], data[11], data[12]
         # mask = mask.to(device)
+        y_disc, event_time, censor = y_disc.to(device), event_time.to(device), censor.to(device)
 
-    elif modality in ["survpath"]:
+        return data_ff, data_ffpe, graph, y_disc, event_time, censor, data_omics, clinical_data_list
+    elif modality in ["m3surv"]:
+        data_ff = data[0].to(device)
+        data_ffpe = data[1].to(device)
+        # print(data[1])
+        graph = data[2]
+        genomics = []
+        transomics = []
+        for item in data[3]:
+            genomics.append(item.to(device))
+        for item in data[4][0]:
+            transomics.append(item.to(device))
+        proteomics, y_disc, event_time, censor, clinical_data_list = data[5], data[6], data[7], data[8], data[9]
+        y_disc, event_time, censor = y_disc.to(device), event_time.to(device), censor.to(device)
 
-        data_WSI = data[0].to(device)
-
-        data_omics = []
-        for item in data[1][0]:
-            data_omics.append(item.to(device))
-        
-        if data[6][0,0] == 1:
-            mask = None
-        else:
-            mask = data[6].to(device)
-
-        y_disc, event_time, censor, clinical_data_list = data[2], data[3], data[4], data[5]
+        return data_ff, data_ffpe, graph, y_disc, event_time, censor, genomics, transomics, proteomics, clinical_data_list
         
     else:
         raise ValueError('Unsupported modality:', modality)
     
-    y_disc, event_time, censor = y_disc.to(device), event_time.to(device), censor.to(device)
-
-    return data_ff, data_ffpe, graph, y_disc, event_time, censor, data_omics, clinical_data_list
 
 def _process_data_and_forward(model, modality, device, data, memory):
     r"""
@@ -384,20 +273,9 @@ def _process_data_and_forward(model, modality, device, data, memory):
         - clinical_data_list : List
     
     """
-    data_ff, data_ffpe, graph, y_disc, event_time, censor, data_omics, clinical_data_list = _unpack_data(modality, device, data)
     
-    if modality in ["coattn", "coattn_motcat"]:  
-        
-        out = model(
-            x_ff=data_ff, 
-            x_omic1=data_omics[0], 
-            x_omic2=data_omics[1], 
-            x_omic3=data_omics[2], 
-            x_omic4=data_omics[3], 
-            x_omic5=data_omics[4], 
-            x_omic6=data_omics[5]
-            )  
-    elif modality == "hgnn":
+    if modality == "m2surv":
+        data_ff, data_ffpe, graph, y_disc, event_time, censor, data_omics, clinical_data_list = _unpack_data(modality, device, data)
         out, memory_dict = model(
             x_ff=data_ff,
             x_ffpe=data_ffpe,
@@ -408,24 +286,17 @@ def _process_data_and_forward(model, modality, device, data, memory):
             x_omic4=data_omics[3], 
             x_omic5=data_omics[4], 
             x_omic6=data_omics[5]
-            )  
-
-    elif modality == 'survpath':
-
-        input_args = {"x_path": data_WSI.to(device)}
-        for i in range(len(data_omics)):
-            input_args['x_omic%s' % str(i+1)] = data_omics[i].type(torch.FloatTensor).to(device)
-        input_args["return_attn"] = False
-        imput_args["model"]="train"
-        out = model(**input_args)
+            ) 
+    elif modality == "m3surv":
+        data_ff, data_ffpe, graph, y_disc, event_time, censor, genomics, transomics, proteomics, clinical_data_list = _unpack_data(modality, device, data)
+        input_args = {'ff_path': data_ff, 'ffpe_path': data_ffpe, 'graph':graph, 'proteomic':proteomics}
         
-    else:
-        out = model(
-            data_omics = data_omics, 
-            data_WSI = data_WSI, 
-            mask = mask
-            )
-        
+        for i in range(len(genomics)):
+            input_args['x_genomic%s' % str(i+1)] = genomics[i].type(torch.FloatTensor).to(device)
+        for i in range(len(transomics)):
+            input_args['x_transomic%s' % str(i+1)] = transomics[i].type(torch.FloatTensor).to(device)
+        out, memory_dict = model(**input_args)
+
     if len(out.shape) == 1:
             out = out.unsqueeze(0)
     return out, y_disc, event_time, censor, clinical_data_list, memory_dict
@@ -474,7 +345,7 @@ def _update_arrays(all_risk_scores, all_censorships, all_event_times, all_clinic
     all_clinical_data.append(clinical_data_list)
     return all_risk_scores, all_censorships, all_event_times, all_clinical_data
 
-def _train_loop_survival(epoch, model, modality, loader, optimizer, scheduler, loss_fn, memory):
+def _train_m2surv(epoch, model, modality, loader, optimizer, scheduler, loss_fn, memory):
     r"""
     Perform one epoch of training 
 
@@ -528,6 +399,74 @@ def _train_loop_survival(epoch, model, modality, loader, optimizer, scheduler, l
         
         if (batch_idx % 200) == 0:
             print("batch: {}, loss: {:.3f}".format(batch_idx, loss.item()))
+    
+    total_loss /= len(loader.dataset)
+    all_risk_scores = np.concatenate(all_risk_scores, axis=0)
+    all_censorships = np.concatenate(all_censorships, axis=0)
+    all_event_times = np.concatenate(all_event_times, axis=0)
+    c_index = concordance_index_censored((1-all_censorships).astype(bool), all_event_times, all_risk_scores, tied_tol=1e-08)[0]
+
+    print('Epoch: {}, train_loss: {:.4f}, train_c_index: {:.4f}'.format(epoch, total_loss, c_index))
+
+    return c_index, total_loss, memory_summary
+
+def _train_m3surv(epoch, model, modality, loader, optimizer, scheduler, loss_fn, memory):
+    r"""
+    Perform one epoch of training 
+
+    Args:
+        - epoch : Int
+        - model : Pytorch model
+        - modality : String 
+        - loader : Pytorch dataloader
+        - optimizer : torch.optim
+        - loss_fn : custom loss function class 
+    
+    Returns:
+        - c_index : Float
+        - total_loss : Float 
+    
+    """
+    device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    model.train()
+    # memory.clear()
+
+    total_loss = 0.
+    
+    all_risk_scores = []
+    all_censorships = []
+    all_event_times = []
+    all_clinical_data = []
+    memory_summary = []
+    # one epoch
+    for batch_idx, data in enumerate(loader):
+        
+        optimizer.zero_grad()
+
+        h, y_disc, event_time, censor, clinical_data_list, md  = _process_data_and_forward(model, modality, device, data, memory)
+        #print()
+        # memory_summary.append(md)
+        
+        loss = loss_fn(h=h, y=y_disc, t=event_time, c=censor) 
+        #print(loss)
+        loss_value = loss.item()
+        loss = loss / y_disc.shape[0]
+        
+        risk, _ = _calculate_risk(h)
+
+        all_risk_scores, all_censorships, all_event_times, all_clinical_data = _update_arrays(all_risk_scores, all_censorships, all_event_times,all_clinical_data, event_time, censor, risk, clinical_data_list)
+
+        total_loss += loss_value 
+
+        loss.backward()
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2)
+        optimizer.step()
+        scheduler.step()
+        
+        # if (batch_idx % 200) == 0:
+        #     print("batch: {}, loss: {:.3f}".format(batch_idx, loss.item()))
+    
     
     total_loss /= len(loader.dataset)
     all_risk_scores = np.concatenate(all_risk_scores, axis=0)
@@ -651,20 +590,8 @@ def _summary(dataset_factory, model, modality, loader, loss_fn, memory, survival
     count = 0
     with torch.no_grad():
         for data in loader:
-
-            data_ff, data_ffpe, graph, y_disc, event_time, censor, data_omics, clinical_data_list = _unpack_data(modality, device, data)
-
-            if modality in ["coattn", "coattn_motcat"]:  
-                h = model(
-                    x_path=data_WSI, 
-                    x_omic1=data_omics[0], 
-                    x_omic2=data_omics[1], 
-                    x_omic3=data_omics[2], 
-                    x_omic4=data_omics[3], 
-                    x_omic5=data_omics[4], 
-                    x_omic6=data_omics[5]
-                )  
-            elif modality == "hgnn":
+            if modality == "m2surv":
+                data_ff, data_ffpe, graph, y_disc, event_time, censor, data_omics, clinical_data_list = _unpack_data(modality, device, data)
                 h,_ = model(
                     x_ff=data_ff, 
                     x_ffpe=data_ffpe,
@@ -676,22 +603,16 @@ def _summary(dataset_factory, model, modality, loader, loss_fn, memory, survival
                     x_omic5=data_omics[4], 
                     x_omic6=data_omics[5],
                     memory=memory
-                )  
-            elif modality == "survpath":
-
-                input_args = {"x_path": data_WSI.to(device)}
-                for i in range(len(data_omics)):
-                    input_args['x_omic%s' % str(i+1)] = data_omics[i].type(torch.FloatTensor).to(device)
-                input_args["return_attn"] = False
-                input_args["model"] = "eval"
-                h = model(**input_args)
-                
-            else:
-                h = model(
-                    data_omics = data_omics, 
-                    data_WSI = data_WSI, 
-                    mask = mask
-                    )
+                ) 
+            elif modality == "m3surv":
+                data_ff, data_ffpe, graph, y_disc, event_time, censor, genomics, transomics, proteomics, clinical_data_list = _unpack_data(modality, device, data)
+                input_args = {'ff_path': data_ff, 'ffpe_path': data_ffpe, 'graph':graph, 'proteomic':proteomics, 'memory':memory}
+                for i in range(len(genomics)):
+                    input_args['x_genomic%s' % str(i+1)] = genomics[i].type(torch.FloatTensor).to(device)
+                for i in range(len(transomics)):
+                    input_args['x_transomic%s' % str(i+1)] = transomics[i].type(torch.FloatTensor).to(device)
+                # input_args['x_genomic1']=None
+                h, _ = model(**input_args)
                     
             if len(h.shape) == 1:
                 h = h.unsqueeze(0)
@@ -783,18 +704,32 @@ def _step(cur, args, loss_fn, model, optimizer, scheduler, train_loader, val_loa
         - val_iauc : Float
         - total_loss : Float
     """
-    memory = MemoryBank(f'memory/p_075.h5', theta = 0.75)
     all_survival = _extract_survival_metadata(train_loader, val_loader)
     best_val_index = 0
-    best_p=1
-    for epoch in range(args.max_epochs):
-        _, _, memory_summary = _train_loop_survival(epoch, model, args.modality, train_loader, optimizer, scheduler, loss_fn, memory)
-        memory.save(memory_summary)
-        _, val_cindex, _, risk, event, censor, _, _, _, total_loss = _summary(args.dataset_factory, model, args.modality, val_loader, loss_fn, memory, all_survival)
-        print("Val loss:{:.4f}".format(total_loss) , ", val_c_index:{:.4f}".format(val_cindex))
-        if val_cindex>best_val_index:
-            best_val_index=val_cindex
-            torch.save(model.state_dict(), os.path.join(args.results_dir, "s_{}_{}_{:.4f}checkpoint.pt".format(cur, args.study, best_val_index)))
+
+    modality = args.modality
+    if modality == 'm2surv':
+        memory = MemoryBank(f'memory/{args.memory_bank}')
+    
+        for epoch in range(args.max_epochs):
+            _, _, memory_summary = _train_m2surv(epoch, model, args.modality, train_loader, optimizer, scheduler, loss_fn, memory)
+            memory.save(memory_summary)
+            _, val_cindex, _, risk, event, censor, _, _, _, total_loss = _summary(args.dataset_factory, model, args.modality, val_loader, loss_fn, memory, all_survival)
+            print("Val loss:{:.4f}".format(total_loss) , ", val_c_index:{:.4f}".format(val_cindex))
+            if val_cindex>best_val_index:
+                best_val_index=val_cindex
+                torch.save(model.state_dict(), os.path.join(args.results_dir, "s_{}_{}_{:.4f}checkpoint.pt".format(cur, args.study, best_val_index)))
+    elif modality == 'm3surv':
+        memory = ProtoBank(f'memory/{args.memory_name}')
+    
+        for epoch in range(args.max_epochs):
+            _, _, memory_summary = _train_m3surv(epoch, model, args.modality, train_loader, optimizer, scheduler, loss_fn, memory)
+            memory.save(memory_summary)
+            _, val_cindex, _, risk, event, censor, _, _, _, total_loss = _summary(args.dataset_factory, model, args.modality, val_loader, loss_fn, memory, all_survival)
+            print("Val loss:{:.4f}".format(total_loss) , ", val_c_index:{:.4f}".format(val_cindex))
+            if val_cindex>best_val_index:
+                best_val_index=val_cindex
+                torch.save(model.state_dict(), os.path.join(args.results_dir, "s_{}_{}_{:.4f}checkpoint.pt".format(cur, args.study, best_val_index)))
     
     torch.save(model.state_dict(), os.path.join(args.results_dir, "s_{}_checkpoint.pt".format(cur)))
     

@@ -61,6 +61,7 @@ def _process_args():
     parser.add_argument('--modality', type=str, default="wsi")
     parser.add_argument('--encoding_dim', type=int, default=768, help='WSI encoding dim')
     parser.add_argument('--use_nystrom', action='store_true', default=False, help='Use Nystrom attentin in SurvPath.')
+    parser.add_argument('--memory_bank', type=str, default='memory.h5', help='h5 file used for Memory Bank')
 
     args = parser.parse_args()
 

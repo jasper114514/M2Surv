@@ -1,11 +1,5 @@
-#!/bin/bash
-cd /mnt/pfs-mc0p4k/cvg/team/didonglin/yangguang/WSI/M2Surv/
-source activate /mnt/pfs-gv8sxa/tts/dhg/yg/envs/hyper
-export HF_ENDPOINT=https://hf-mirror.com
-DATA_ROOT_DIR='/mnt/pfs-gv8sxa/tts/dhg/yg/WSI/WSIdata/'  # where are the TCGA features stored?
-BASE_DIR="/mnt/pfs-mc0p4k/cvg/team/didonglin/yangguang/WSI/M2Surv/"  # where is the repo cloned?
-TYPE_OF_PATH="combine"  # what type of pathways?
-MODEL="hgnn"  # what type of model do you want to train?
+TYPE_OF_PATH="combine"
+MODEL="m2surv"  # what type of model do you want to train?
 FUSION="concat"
 DIM1=8
 DIM2=16

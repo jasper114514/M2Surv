@@ -395,6 +395,35 @@ def _collate_MCAT(batch):
 
     return [ff, ffpe, graph, omic1, omic2, omic3, omic4, omic5, omic6, label, event_time, c, clinical_data_list]
 
+def _collate_M3Surv(batch):
+    
+    ff_img = torch.stack([item[0] for item in batch])
+    ffpe_img = torch.stack([item[1] for item in batch])
+    graph = batch[0][2]
+    omic1 = torch.cat([item[3][0] for item in batch], dim = 0).type(torch.FloatTensor)
+    omic2 = torch.cat([item[3][1] for item in batch], dim = 0).type(torch.FloatTensor)
+    omic3 = torch.cat([item[3][2] for item in batch], dim = 0).type(torch.FloatTensor)
+    omic4 = torch.cat([item[3][3] for item in batch], dim = 0).type(torch.FloatTensor)
+    omic5 = torch.cat([item[3][4] for item in batch], dim = 0).type(torch.FloatTensor)
+    omic6 = torch.cat([item[3][5] for item in batch], dim = 0).type(torch.FloatTensor)
+    genomic_list = [omic1, omic2, omic3, omic4, omic5, omic6]
+
+    transomic_list = []
+    for item in batch:
+        transomic_list.append(item[4])
+    protein = batch[0][5]
+    label = torch.LongTensor([item[6].long() for item in batch])
+    event_time = torch.FloatTensor([item[7] for item in batch])
+    c = torch.FloatTensor([item[8] for item in batch])
+
+    clinical_data_list = []
+    for item in batch:
+        clinical_data_list.append(item[9])
+
+    # mask = torch.stack([item[11] for item in batch], dim=0)
+
+    return [ff_img, ffpe_img, graph, genomic_list, transomic_list, protein, label, event_time, c, clinical_data_list]
+
 def _collate_survpath(batch):
     r"""
     Collate function for survpath
@@ -492,8 +521,10 @@ def _get_split_loader(args, split_dataset, training = False, testing = False, we
         collate_fn = _collate_omics
     elif args.modality in ["abmil_wsi", "abmil_wsi_pathways", "deepmisl_wsi", "deepmisl_wsi_pathways", "mlp_wsi", "transmil_wsi", "transmil_wsi_pathways"]:
         collate_fn = _collate_wsi_omics
-    elif args.modality in ["coattn", "coattn_motcat", "hgnn"]:  
+    elif args.modality in ["coattn", "coattn_motcat", "m2surv"]:  
         collate_fn = _collate_MCAT
+    elif args.modailty == 'm3surv':
+        collate_fn = _collate_M3Surv
     elif args.modality == "survpath":
          collate_fn = _collate_survpath 
     else:

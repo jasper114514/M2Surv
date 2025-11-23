@@ -99,13 +99,8 @@ class SurvivalDatasetFactory:
         self._summarize()
 
         #---> read the signature files for the correct model/ experiment
-        if True:
-            self._setup_mcat()
-        elif self.is_survpath:
-            self._setup_survpath()
-        else:
-            self.omic_names = []
-            self.omic_sizes = []
+        self._setup_survpath()
+        self._setup_mcat()
        
     def _setup_mcat(self):
         r"""
@@ -647,7 +642,7 @@ class SurvivalDataset(Dataset):
         self.omic_names = omic_names
         self.num_pathways = len(omic_names)
         self.sample = sample
-
+        self.protein_path = f"datasets_csv/protein/{study_name}"
         # for weighted sampling
         self.slide_cls_id_prep()
     
@@ -708,12 +703,12 @@ class SurvivalDataset(Dataset):
             #@HACK: returning case_id, remove later
             return (patch_features, omics_tensor, label, event_time, c, clinical_data, mask)
 
-        elif self.modality in ["coattn", "coattn_motcat","hgnn"]:
+        elif self.modality in ["coattn", "coattn_motcat"]:
+            pass
+        elif self.modality in ["m2surv"]:
             
-            ff_patch_features, ffpe_patch_features, graph = self._load_wsi_embs_from_sampled(self.data_dir, slide_ids)
-            #print(graph)
-            #print(self.omic_names)
-            #print(self.omics_data_dict["rna"])
+            ff_patch_features, ffpe_patch_features, graph = self._load_wsi_embs_from_path(self.data_dir, slide_ids)
+
             if ffpe_patch_features is None:
                 raise Exception(slide_ids)
             omic1 = torch.tensor(self.omics_data_dict["rna"][self.omic_names[0]].iloc[idx])
@@ -725,6 +720,34 @@ class SurvivalDataset(Dataset):
 
             return (ff_patch_features, ffpe_patch_features, graph, omic1, omic2, omic3, omic4, omic5, omic6, label, event_time, c, clinical_data)
         
+        elif self.modality in ["m3surv"]:
+            ff_patch_features, ffpe_patch_features, graph = self._load_wsi_embs_from_path(self.data_dir, slide_ids)
+            # print(graph[0])
+            if ffpe_patch_features is None:
+                raise Exception(slide_ids)
+                
+
+            transomic_list = []
+
+            for i in range(self.num_pathways):
+                transomic_list.append(torch.tensor(self.omics_data_dict["rna"][self.transomic_names[i]].iloc[idx]))
+            
+            omic1 = torch.tensor(self.omics_data_dict["rna"][self.genomic_names[0]].iloc[idx])
+            omic2 = torch.tensor(self.omics_data_dict["rna"][self.genomic_names[1]].iloc[idx])
+            omic3 = torch.tensor(self.omics_data_dict["rna"][self.genomic_names[2]].iloc[idx])
+            omic4 = torch.tensor(self.omics_data_dict["rna"][self.genomic_names[3]].iloc[idx])
+            omic5 = torch.tensor(self.omics_data_dict["rna"][self.genomic_names[4]].iloc[idx])
+            omic6 = torch.tensor(self.omics_data_dict["rna"][self.genomic_names[5]].iloc[idx])
+            genomic_list = [omic1, omic2, omic3, omic4, omic5, omic6]
+            protein_path = os.path.join(self.protein_path, '{}.pt'.format(case_id))
+            if os.path.isfile(protein_path):
+                protein = torch.load(protein_path)
+            else:
+                protein = None
+                return (ff_patch_features, ffpe_patch_features, graph, genomic_list, transomic_list, None, label, event_time, c, clinical_data)
+            
+            return (ff_patch_features, ffpe_patch_features, graph, genomic_list, transomic_list, protein, label, event_time, c, clinical_data)
+
         elif self.modality == "survpath":
             patch_features, graph = self._load_wsi_embs_from_path(self.data_dir, slide_ids)
 
@@ -882,7 +905,7 @@ class SurvivalDataset(Dataset):
 
     def _load_wsi_embs_from_sampled(self, data_dir, slide_ids):
         slide_id = slide_ids[0][:12]
-        graph_path = os.path.join(data_dir, 's_files', f'{slide_id.rstrip(".svs")}.pt')
+        graph_path = os.path.join(data_dir, 'graph_files', f'{slide_id.rstrip(".svs")}.pt')
         graph_representations = []
 
         try:
