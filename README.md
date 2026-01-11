@@ -1,4 +1,4 @@
-MRePath
+M2Surv
 ===========
 
 <details>
@@ -10,6 +10,24 @@ MRePath
 
 
 </details>
+
+---
+
+### 🔔 Update (Journal Extension)
+
+This work has been **extended and published in *Medical Image Analysis*** with a more comprehensive framework named **M³Surv**, which further fuses **multi-slide pathology and multi-omics data** with a **memory-augmented mechanism** for more robust survival prediction.
+
+* **Journal version:** *Medical Image Analysis*, 2025
+* **Model:** **M³Surv (Multi-slide & Multi-omics Survival Prediction)**
+
+Please refer to the following paper for the extended methodology and experiments:
+
+> **M³Surv: Fusing multi-slide and multi-omics for memory-augmented robust survival prediction**
+> Mingcheng Qu, Guang Yang, Donglin Di, Yue Gao, Yang Song, Lei Fan
+> *Medical Image Analysis*, 2025
+> 📄 Article ID: 103846
+
+---
 
 **Summary:** We propose a multimodal learning framework, M²Surv (Memory-Augmented Multimodal Framework for Survival Prediction) to integrate multiple pathology slides and genomic data while addressing the pathology-genomics imbalance through hypergraph learning. Additionally, a memory bank is introduced to store paired pathology-genomic features during training, allowing the retrieval of relevant features to compensate for incomplete modalities during inference.
 
@@ -139,3 +157,15 @@ Before running this script, refer to the hyperparameter settings recommended in 
   journal={arXiv preprint arXiv:2506.19324},
   year={2025}
 }
+```
+
+```bibtex
+@article{qu2025m3surv,
+  title={M3Surv: Fusing multi-slide and multi-omics for memory-augmented robust survival prediction},
+  author={Qu, Mingcheng and Yang, Guang and Di, Donglin and Gao, Yue and Song, Yang and Fan, Lei},
+  journal={Medical Image Analysis},
+  pages={103846},
+  year={2025},
+  publisher={Elsevier}
+}
+```
